@@ -3,7 +3,7 @@ services:
     platform: linux/amd64
     build:
       context: .
-      dockerfile: ./deploy/Dockerfile.dev
+      dockerfile: ./Dockerfile
     image: cx-hackathon-backend
     container_name: cx-hackathon-backend
     ports:
