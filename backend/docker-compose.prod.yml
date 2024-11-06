@@ -1,0 +1,28 @@
+services:
+  server:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile.prod
+    image: cx-hackathon-backend
+    container_name: cx-hackathon-backend
+    networks:
+        - cx-hackathon-service-network
+
+  caddy:
+    image: caddy:alpine
+    container_name: caddy
+    networks:
+      - cx-hackathon-service-network
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    restart: unless-stopped
+
+networks:
+  cx-hackathon-service-network:
+    name: cx-hackathon-service-network
+    driver: bridge
