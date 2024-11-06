@@ -7,9 +7,12 @@ import {
   CardTitle,
 } from "@components/ui/card";
 
-const HomePage = () => {
+const HomePage = async () => {
   // print env
-  const endpoint = process.env.NEXT_PUBLIC_API_ENDPOINT;
+  const endpoint: string = process.env.NEXT_PUBLIC_API_ENDPOINT as string;
+
+  const data = await fetch(endpoint);
+  const msg: { hello: string } = await data.json();
 
   return (
     <Card>
@@ -19,6 +22,7 @@ const HomePage = () => {
 
       <CardContent>
         <p>{endpoint}</p>
+        <p>Message from backend: {msg.hello}</p>
       </CardContent>
 
       <CardFooter className="flex justify-between">
