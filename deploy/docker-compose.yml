@@ -1,20 +1,4 @@
 services:
-  web:
-    platform: linux/amd64
-    build:
-      context: ../frontend
-      dockerfile: ../deploy/frontend-dockerfile
-    image: cx-hackathon-frontend
-    depends_on:
-      server:
-        condition: service_healthy
-        restart: true
-    env_file:
-        - ../frontend/.env
-    container_name: cx-hackathon-frontend
-    networks:
-        - cx-hackathon-service-network
-
   server:
     platform: linux/amd64
     build:
