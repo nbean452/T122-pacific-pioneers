@@ -1,0 +1,19 @@
+services:
+  server:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile.dev
+    image: cx-hackathon-backend
+    container_name: cx-hackathon-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+    networks:
+        - cx-hackathon-service-network
+
+networks:
+  cx-hackathon-service-network:
+    name: cx-hackathon-service-network
+    driver: bridge
