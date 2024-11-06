@@ -1,3 +1,7 @@
+pacific-pioneers.nbenedictcodes.com {
+  reverse_proxy localhost:3000
+}
+
 pacific-pioneers-api.nbenedictcodes.com {
   reverse_proxy cx-hackathon-backend:8000
 }
