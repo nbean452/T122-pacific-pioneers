@@ -1,5 +1,5 @@
-import json
 import math
+from statistics import mean
 
 import pandas as pd
 
@@ -13,15 +13,12 @@ FRONT_SECTION_RATIO = FRONT_SECTION_VOLUME / AVAILABLE_CARGO_VOLUME
 REAR_SECTION_RATIO = REAR_SECTION_VOLUME / AVAILABLE_CARGO_VOLUME
 
 # unit in m
-BULK_COMPARTMENT_WIDTH = 0.81
 CARGO_COMPARTMENT_WIDTH = 1.82
-
-BULK_HEIGHT = 0.95
 CARGO_HEIGHT = 1.823
+CARGO_LENGTH = 14.75
 
+# Adjusted section volumes (this issue will be explained more during pitching)
 ADJUSTMENT_RATIO = 0.29
-
-# adjust the ratio a bit for easier calculation
 ADJUSTED_FRONT_SECTION_VOLUME = (
     FRONT_SECTION_RATIO + ADJUSTMENT_RATIO
 ) * AVAILABLE_CARGO_VOLUME
@@ -29,20 +26,35 @@ ADJUSTED_REAR_SECTION_VOLUME = (
     REAR_SECTION_RATIO - ADJUSTMENT_RATIO
 ) * AVAILABLE_CARGO_VOLUME
 
-print(ADJUSTED_FRONT_SECTION_VOLUME + ADJUSTED_REAR_SECTION_VOLUME)
-
 SECTION_VOLUMES = [
     FRONT_SECTION_VOLUME,
     REAR_SECTION_VOLUME,
 ]
 NO_OF_BAGGAGE_SECTIONS = 2
 
-# order of baggages
-# 1. Heavy first section
-# 2. Light first section (Medium)
-# 3. Light second section (Lightest)
-# 4. Heavy second section (Medium)
-# 5. Transfer bags
+
+def distribute_baggages(baggages, subsections, max_volume, index=0) -> int:
+    """
+    Distribute baggages into sub-sections based on their volume and sub-section limits.
+    Returns an index that can be used to continue from the last operation
+    """
+
+    for baggage in baggages:
+        baggage_volume = (
+            baggage["Width"] * baggage["Length"] * baggage["Height"]
+        ) / 1_000_000  # Convert from cm^3 to m^3
+
+        for subsection in subsections:
+            subsection_volume = sum(
+                (b["Width"] * b["Length"] * b["Height"]) / 1_000_000 for b in subsection
+            )
+
+            if subsection_volume + baggage_volume <= max_volume / len(subsections):
+                subsection.append(baggage)
+                index += 1
+                break
+
+    return index
 
 
 def main():
@@ -53,103 +65,90 @@ def main():
 
     baggages: list[dict] = df.to_dict("records")
 
+    # init variables to filter baggages for transfer and non-transfer
     transfer_baggages = []
     non_transfer_baggages = []
 
-    cumulative_volumes = []
-
+    # sort the list based on weight and if the baggage is fragile
     all_sorted_baggages = sorted(
         baggages,
         key=lambda x: (x["Weight"], x["Fragility"] == "NF"),
     )
 
-    # iterate over all baggages
+    # Separate transfer and non-transfer baggages
     for baggage in all_sorted_baggages:
         if baggage["Transfer Status"] == "T":
             transfer_baggages.append(baggage)
         else:
             non_transfer_baggages.append(baggage)
 
-    print(f"length of non-transfer baggages: {len(non_transfer_baggages)}")
+    # get average baggage length
+    baggage_lengths = [baggage["Length"] for baggage in all_sorted_baggages]
+    average_baggage_length = mean(baggage_lengths) / 100
 
-    section_index = 0
-    baggage_sections = [[] for _ in range(NO_OF_BAGGAGE_SECTIONS)]
+    # get the number of sub-sections in the front cargo section
+    no_of_front_sub_sections = math.ceil(
+        CARGO_LENGTH * FRONT_SECTION_RATIO / average_baggage_length
+    )
 
-    cumulative_volume = 0
-    for baggage_index in range(len(non_transfer_baggages)):
-        baggage = non_transfer_baggages[baggage_index]
+    front_sub_sections = [[] for _ in range(no_of_front_sub_sections)]
 
-        baggage_volume = (
-            baggage["Width"] * baggage["Length"] * baggage["Height"]
-        ) / math.pow(100, 3)
-        current_volume = cumulative_volume + baggage_volume
+    # same thing but with rear cargo section (AFT + BULK CARGO)
+    no_of_rear_sub_sections = math.ceil(
+        CARGO_LENGTH * REAR_SECTION_RATIO / average_baggage_length
+    )
+    rear_sub_sections = [[] for _ in range(no_of_rear_sub_sections)]
 
-        if current_volume > SECTION_VOLUMES[section_index]:
-            cumulative_volumes.append(cumulative_volume)
+    # Distribute non-transfer baggages into front section
+    last_index = distribute_baggages(
+        # non_transfer_baggages[: len(non_transfer_baggages) // 2],  # Heaviest to front
+        non_transfer_baggages,  # Heaviest to front
+        front_sub_sections,
+        ADJUSTED_FRONT_SECTION_VOLUME,
+    )
 
-            section_index += 1
-            cumulative_volume = 0
-            current_volume = baggage_volume
-
-        baggage_section_copy = baggage_sections[section_index].copy()
-        baggage_section_copy.append(baggage)
-
-        baggage_sections[section_index] = baggage_section_copy
-        cumulative_volume = current_volume
-
-    cumulative_volumes.append(cumulative_volume)
-
-    # for index, baggage_section in enumerate(baggage_sections):
-    #
-    #     if index % 2 == 0:
-    #         baggage_section.reverse()
-    #
-    #     # print(f"baggage section {index} length: {len(baggage_section)}")
-    #     # print(
-    #     #     json.dumps(
-    #     #         (baggage_section[:10]),
-    #     #         indent=2,
-    #     #     )
-    #     # )
-
-    front_section_baggages, rear_section_baggages = baggage_sections
-
-    # print(
-    #     front_section_baggages,
-    #     rear_section_baggages,
-    # )
-
+    # Distribute non-transfer and transfer baggages into rear section
     sorted_transfer_baggages = sorted(
         transfer_baggages,
         key=lambda x: (x["Weight"], x["Fragility"] == "F"),
     )
 
-    rear_section_baggages += sorted_transfer_baggages
+    # baggages for transfers are always put last,
+    # so that when the baggages are placed,
+    # they are placed near the cargo door, for easy access
+    rear_section_baggages = (
+        non_transfer_baggages[last_index:] + sorted_transfer_baggages
+    )
 
-    # print(
-    #     json.dumps(
-    #         rear_section_baggages,
-    #         indent=2,
-    #     )
-    # )
+    # distribute baggage starting from the last index, if there's no more baggages,
+    # then this function won't do anything
+    distribute_baggages(
+        rear_section_baggages,
+        rear_sub_sections,
+        ADJUSTED_REAR_SECTION_VOLUME,
+    )
 
-    with open("./output.json", "w") as file:
-        json.dump(
-            {
-                "front_section": {
-                    "volume_available": SECTION_VOLUMES[0],
-                    "volume_used": cumulative_volumes[0],
-                    "items": front_section_baggages,
-                },
-                "rear_section": {
-                    "volume_available": SECTION_VOLUMES[1],
-                    "volume_used": cumulative_volumes[1],
-                    "items": rear_section_baggages,
-                },
-            },
-            file,
-            indent=2,
-        )
+    print("=" * 20)
+    print(f"Number of baggages for transfer: {len(transfer_baggages)}")
+
+    print("=" * 20)
+    print("Front Section (FWD)")
+    print("=" * 20)
+
+    sum_of_baggages = 0
+    for last_index, front_sub_section in enumerate(front_sub_sections):
+        print(f"sub-section {last_index+1}: {len(front_sub_section)} baggage")
+        sum_of_baggages += len(front_sub_section)
+
+    print("=" * 20)
+    print("Rear Section (AFT + Cargo)")
+    print("=" * 20)
+    for last_index, rear_sub_section in enumerate(rear_sub_sections):
+        print(f"sub-section {last_index+1}: {len(rear_sub_section)} baggage")
+        sum_of_baggages += len(rear_sub_section)
+
+    print("=" * 20)
+    print(f"Loaded Baggages: {sum_of_baggages} baggages")
 
 
 if __name__ == "__main__":
